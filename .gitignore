@@ -1,0 +1,14 @@
+# Claude
+.claude/
+
+# Temp / scratch files
+test_phase*.py
+_tmp*.txt
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Environment
+.env
+venv/

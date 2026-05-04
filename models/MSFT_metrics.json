@@ -1,0 +1,14 @@
+{
+  "short_term": {
+    "rmse": 43.4538,
+    "mae": 39.5186,
+    "mape": 8.5168,
+    "directional_accuracy": 55.0
+  },
+  "long_term": {
+    "rmse": 48.3093,
+    "mae": 40.343,
+    "mape": 8.8555,
+    "directional_accuracy": 55.62
+  }
+}
