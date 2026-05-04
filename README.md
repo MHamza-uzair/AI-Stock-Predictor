@@ -1,8 +1,8 @@
 # AI Stock Predictor
 ### Dual-Mode LSTM Neural Network with FinBERT Sentiment Analysis & XGBoost Direction Signal
 
-**Bahria University Karachi Campus**
-**Course: Entrepreneurship / AI Project**
+**IBA Karachi Campus**
+**Course: AI Project**
 
 | Team Member | ERP ID |
 |---|---|
