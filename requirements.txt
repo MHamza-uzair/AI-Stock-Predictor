@@ -9,3 +9,4 @@ transformers>=4.35.0
 pymupdf>=1.23.0
 pytz>=2023.3
 scipy>=1.11.0
+xgboost>=2.0.0
