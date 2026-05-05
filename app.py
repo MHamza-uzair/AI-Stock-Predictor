@@ -516,6 +516,36 @@ with tab_dash:
                         else:
                             st.info("XGBoost signal unavailable — retrain to generate it.")
 
+                    # Step 6b — combined signal panel
+                    if xgb_direction is not None:
+                        _lstm_bullish = is_bullish          # already computed above
+                        _xgb_bullish  = (xgb_direction == "Bullish")
+                        if _lstm_bullish and _xgb_bullish:
+                            _cs_color = THEME["bullish"]
+                            _cs_bg    = "#0A2010"
+                            _cs_text  = "▲ Strong Bullish — Confirmed by both models"
+                        elif not _lstm_bullish and not _xgb_bullish:
+                            _cs_color = THEME["bearish"]
+                            _cs_bg    = "#2A0A0A"
+                            _cs_text  = "▼ Strong Bearish — Confirmed by both models"
+                        elif not _lstm_bullish and _xgb_bullish:
+                            _cs_color = "#F59E0B"
+                            _cs_bg    = "#1A1500"
+                            _cs_text  = "◆ Divergent Signal — Short-term pressure, near-term recovery possible"
+                        else:
+                            _cs_color = "#F59E0B"
+                            _cs_bg    = "#1A1500"
+                            _cs_text  = "◆ Divergent Signal — Long-term upside, near-term volatility expected"
+                        st.markdown(
+                            f'<div style="background:{_cs_bg};border:1px solid {_cs_color}55;'
+                            f'border-radius:8px;padding:1rem 1.25rem;margin-top:1.25rem;">'
+                            f'<p style="color:#94A3B8;font-size:0.72rem;font-weight:600;'
+                            f'letter-spacing:0.07em;text-transform:uppercase;margin:0 0 0.45rem;">Combined Signal</p>'
+                            f'<p style="color:{_cs_color};font-size:1.15rem;font-weight:700;margin:0;">{_cs_text}</p>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
                     # Step 7 — metrics
                     st.markdown("<div style='margin-top:1.5rem;'></div>", unsafe_allow_html=True)
                     section_header("Model Performance (Test Set)")
