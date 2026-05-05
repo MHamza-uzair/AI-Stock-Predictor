@@ -12,6 +12,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
+from dotenv import load_dotenv
+
+load_dotenv()
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -24,6 +27,7 @@ from src.model import (
     NUM_FEATURES, count_parameters, build_short_term_model, build_long_term_model,
 )
 from src.ensemble import train_xgb, xgb_exists
+from src.news_fetcher import fetch_news
 from src.predict import forecast, get_test_sequences, predict_xgb_direction
 from src.sentiment import score_article
 from src.train import load_trained_models, load_metrics, models_exist, train_models
@@ -94,6 +98,81 @@ with st.sidebar:
     )
     uploaded_file = st.file_uploader("Upload .txt or .pdf", type=["txt", "pdf"], label_visibility="collapsed")
     article_text  = st.text_area("Or paste article text", height=80, placeholder="Paste financial news here…")
+
+    fetch_news_btn = st.button("Fetch Latest News", type="secondary", use_container_width=True)
+    if fetch_news_btn:
+        _api_key = os.getenv("NEWS_API_KEY", "")
+        if not ticker:
+            st.warning("Enter a ticker first.")
+        elif not _api_key:
+            st.error("NEWS_API_KEY not found in .env")
+        else:
+            with st.spinner("Fetching headlines…"):
+                try:
+                    _articles = fetch_news(ticker, _api_key)
+                except RuntimeError as _exc:
+                    st.error(str(_exc))
+                    _articles = []
+            if _articles:
+                with st.spinner(f"Scoring {min(len(_articles), 10)} headlines with FinBERT…"):
+                    _scored = []
+                    for _art in _articles[:10]:
+                        _text = f"{_art['title']}. {_art['description']}".strip()
+                        _s, _l, _ = score_article(text=_text)
+                        _scored.append({"title": _art["title"], "url": _art["url"],
+                                        "score": _s, "label": _l})
+                    _avg = float(np.mean([h["score"] for h in _scored]))
+                    st.session_state.news_headlines       = _scored[:5]
+                    st.session_state.news_sentiment_score = _avg
+                    st.session_state.news_ticker          = ticker
+                st.success(f"{len(_articles)} articles · avg {_avg:+.3f} — click Run Prediction to apply")
+            else:
+                st.info("No articles found for this ticker.")
+                st.session_state.pop("news_headlines", None)
+                st.session_state.pop("news_sentiment_score", None)
+                st.session_state.pop("news_ticker", None)
+
+    # ── Sentiment status indicator ────────────────────────────────────────────
+    _has_manual  = uploaded_file is not None or bool(article_text.strip())
+    _news_active = (
+        st.session_state.get("news_ticker") == ticker
+        and bool(st.session_state.get("news_headlines"))
+    )
+
+    if _has_manual:
+        st.markdown(
+            '<div style="background:#0A2010;border:1px solid #00C89644;border-radius:6px;'
+            'padding:0.45rem 0.75rem;margin:0.5rem 0 0;">'
+            '<p style="color:#00C896;font-size:0.74rem;font-weight:600;margin:0;">'
+            '✓ Manual article loaded</p></div>',
+            unsafe_allow_html=True,
+        )
+    elif _news_active:
+        _disp_avg = st.session_state.news_sentiment_score
+        _disp_n   = len(st.session_state.news_headlines)
+        _nc = THEME["bullish"] if _disp_avg > 0.1 else (
+              THEME["bearish"] if _disp_avg < -0.1 else THEME["muted"])
+        _bg = "#0A2010" if _disp_avg > 0.1 else ("#2A0A0A" if _disp_avg < -0.1 else "#111118")
+        st.markdown(
+            f'<div style="background:{_bg};border:1px solid {_nc}44;border-radius:6px;'
+            f'padding:0.45rem 0.75rem;margin:0.5rem 0 0;">'
+            f'<p style="color:{_nc};font-size:0.74rem;font-weight:600;margin:0;">'
+            f'✓ News fetched: {_disp_n} headlines, score: {_disp_avg:+.3f}</p></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Clear Sentiment", type="secondary", use_container_width=True):
+            st.session_state.pop("news_headlines", None)
+            st.session_state.pop("news_sentiment_score", None)
+            st.session_state.pop("news_ticker", None)
+            st.rerun()
+    else:
+        st.markdown(
+            '<div style="background:#111118;border:1px solid #1E1E2E;border-radius:6px;'
+            'padding:0.45rem 0.75rem;margin:0.5rem 0 0;">'
+            '<p style="color:#94A3B8;font-size:0.74rem;font-weight:600;margin:0;">'
+            '○ No sentiment — neutral</p></div>',
+            unsafe_allow_html=True,
+        )
 
     run_btn = st.button("Run Prediction", type="primary", use_container_width=True)
 
@@ -257,6 +336,10 @@ with tab_dash:
             elif article_text.strip():
                 raw_article_text = article_text.strip()
 
+            _run_news_active = (
+                st.session_state.get("news_ticker") == ticker
+                and bool(st.session_state.get("news_headlines"))
+            )
             if raw_article_text or pdf_bytes:
                 with st.spinner("Analysing sentiment…"):
                     try:
@@ -265,6 +348,15 @@ with tab_dash:
                         )
                     except Exception as exc:
                         st.warning(f"Sentiment failed: {exc}")
+            elif _run_news_active:
+                sentiment_score   = st.session_state.news_sentiment_score
+                sentiment_label   = (
+                    "Positive" if sentiment_score > 0.1
+                    else "Negative" if sentiment_score < -0.1
+                    else "Neutral"
+                )
+                sentiment_snippet = f"Average of {len(st.session_state.news_headlines)} fetched headlines"
+            # else: sentiment_score stays 0.0, label "Neutral" — no adjustment applied
 
             feature_df = feature_df.copy()
             feature_df["Sentiment_Score"] = sentiment_score
@@ -641,6 +733,33 @@ with tab_sentiment:
         'FinBERT financial sentiment model — scores news from −1 (negative) to +1 (positive)</p>',
         unsafe_allow_html=True,
     )
+
+    # Fetched headlines section
+    _tab_news = st.session_state.get("news_headlines", [])
+    _tab_news_ticker = st.session_state.get("news_ticker", "")
+    if _tab_news and _tab_news_ticker:
+        section_header(f"Latest Headlines — {_tab_news_ticker}", "Fetched via NewsAPI · scored with FinBERT")
+        for _h in _tab_news:
+            _hc = THEME["bullish"] if _h["label"] == "Positive" else (
+                  THEME["bearish"] if _h["label"] == "Negative" else THEME["muted"])
+            _icon = "▲" if _h["label"] == "Positive" else ("▼" if _h["label"] == "Negative" else "◆")
+            st.markdown(
+                f'<div style="background:#111118;border:1px solid #1E1E2E;border-radius:8px;'
+                f'padding:0.75rem 1rem;margin-bottom:0.5rem;display:flex;align-items:center;gap:1rem;">'
+                f'<span style="color:{_hc};font-size:0.9rem;font-weight:700;min-width:3.5rem;">'
+                f'{_icon} {_h["score"]:+.3f}</span>'
+                f'<span style="color:#F1F5F9;font-size:0.85rem;line-height:1.4;">{_h["title"]}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        _avg_score = st.session_state.get("news_sentiment_score", 0.0)
+        _avg_color = THEME["bullish"] if _avg_score > 0.1 else (THEME["bearish"] if _avg_score < -0.1 else THEME["muted"])
+        st.markdown(
+            f'<p style="color:{_avg_color};font-size:0.82rem;font-weight:600;margin:0.25rem 0 1.5rem;">'
+            f'Average sentiment: {_avg_score:+.4f} — used for prediction adjustment</p>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<hr>", unsafe_allow_html=True)
 
     col_upload, col_paste = st.columns(2)
     with col_upload:
