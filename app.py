@@ -114,15 +114,15 @@ with st.sidebar:
                     st.error(str(_exc))
                     _articles = []
             if _articles:
-                with st.spinner(f"Scoring {min(len(_articles), 10)} headlines with FinBERT…"):
+                with st.spinner(f"Scoring {min(len(_articles), 20)} headlines with FinBERT…"):
                     _scored = []
-                    for _art in _articles[:10]:
+                    for _art in _articles[:20]:
                         _text = f"{_art['title']}. {_art['description']}".strip()
                         _s, _l, _ = score_article(text=_text)
                         _scored.append({"title": _art["title"], "url": _art["url"],
                                         "score": _s, "label": _l})
                     _avg = float(np.mean([h["score"] for h in _scored]))
-                    st.session_state.news_headlines       = _scored[:5]
+                    st.session_state.news_headlines       = _scored[:20]
                     st.session_state.news_sentiment_score = _avg
                     st.session_state.news_ticker          = ticker
                 st.success(f"{len(_articles)} articles · avg {_avg:+.3f} — click Run Prediction to apply")
